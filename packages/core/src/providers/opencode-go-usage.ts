@@ -49,6 +49,18 @@ export function openCodeGoAdaptiveCredentialState(
 
   const now = Date.now();
   const states = credentials.map((candidate) => readUsableState(provider, candidate, now));
+  const currentIndex = credentials.indexOf(credential);
+  const current = currentIndex >= 0 ? states[currentIndex] : undefined;
+
+  // A credential that is already known to be invalid or exhausted should be
+  // excluded immediately, even while another credential is still refreshing.
+  if (current?.blocked) {
+    return {
+      blocked: true,
+      utilization: 2
+    };
+  }
+
   if (states.some((state) => !state)) {
     // Keep CCR's normal priority/limit behavior until every enabled key has a
     // comparable usage snapshot. This avoids biasing toward a key simply
@@ -56,8 +68,6 @@ export function openCodeGoAdaptiveCredentialState(
     return undefined;
   }
 
-  const currentIndex = credentials.indexOf(credential);
-  const current = currentIndex >= 0 ? states[currentIndex] : undefined;
   if (!current) {
     return undefined;
   }
@@ -69,7 +79,7 @@ export function openCodeGoAdaptiveCredentialState(
   // a smaller utilization value and therefore a higher routing preference.
   const utilization = 1 + 1 / (1 + Math.max(0, current.score));
   return {
-    blocked: current.blocked,
+    blocked: false,
     utilization
   };
 }
