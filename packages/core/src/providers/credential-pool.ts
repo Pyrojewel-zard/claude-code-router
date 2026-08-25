@@ -5,6 +5,7 @@ import {
   type ApiKeyLimitUsage,
   type UpstreamAttempt
 } from "@ccr/core/gateway/internal/shared";
+import { openCodeGoAdaptiveCredentialState } from "@ccr/core/providers/opencode-go-usage";
 import {
   findProviderByPublicOrInternalName,
   findProviderCredentialByRuntimeId,
@@ -22,8 +23,6 @@ export function providerCredentialLimitState(
   usage: ApiKeyLimitUsage
 ): { blocked: boolean; utilization: number } {
   const rules = limitRules(credential.limits, usage);
-  if (rules.length === 0) return { blocked: false, utilization: 0 };
-
   const now = Date.now();
   let blocked = false;
   let utilization = 0;
@@ -33,6 +32,16 @@ export function providerCredentialLimitState(
     blocked ||= counter.value + rule.requested > rule.limit;
     utilization = Math.max(utilization, (counter.value + rule.requested) / rule.limit);
   }
+
+  const adaptive = openCodeGoAdaptiveCredentialState(provider, credential);
+  if (adaptive) {
+    blocked ||= adaptive.blocked;
+    // OpenCode Go returns a synthetic utilization >= 1. This intentionally
+    // activates CCR's existing 80% spillover path so live remote quota can
+    // outrank static credential priority while preserving the general sorter.
+    utilization = Math.max(utilization, adaptive.utilization);
+  }
+
   return { blocked, utilization };
 }
 
