@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { GatewayProviderConfig, ProviderCredentialConfig } from "@ccr/core/contracts/app";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
@@ -87,15 +88,16 @@ export function warmOpenCodeGoCredentialUsage(provider: GatewayProviderConfig): 
     if (inFlightRefreshes.has(key)) {
       continue;
     }
-    const refresh = refreshOpenCodeGoCredentialUsage(provider, credential, key)
+
+    const refresh: Promise<void> = refreshOpenCodeGoCredentialUsage(provider, credential, key)
       .catch(() => undefined)
-      .then(() => undefined)
-      .finally(() => {
-        if (inFlightRefreshes.get(key) === refresh) {
-          inFlightRefreshes.delete(key);
-        }
-      });
+      .then(() => undefined);
     inFlightRefreshes.set(key, refresh);
+    void refresh.finally(() => {
+      if (inFlightRefreshes.get(key) === refresh) {
+        inFlightRefreshes.delete(key);
+      }
+    });
   }
 }
 
@@ -229,7 +231,9 @@ function activeCredentials(provider: GatewayProviderConfig): ProviderCredentialC
 }
 
 function usageCacheKey(provider: GatewayProviderConfig, credential: ProviderCredentialConfig): string {
-  return `${provider.name}::${providerCredentialRuntimeId(provider, credential)}::${providerCredentialApiKey(credential).slice(-8)}`;
+  const apiKey = providerCredentialApiKey(credential);
+  const apiKeyHash = apiKey ? createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : "";
+  return `${provider.name}::${providerCredentialRuntimeId(provider, credential)}::${apiKeyHash}`;
 }
 
 function isOpenCodeGoProvider(provider: GatewayProviderConfig): boolean {
